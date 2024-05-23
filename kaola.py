@@ -6,25 +6,58 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import lxml
+from typing import List, Dict
 
 class NavItem:
-  def __init__(self, title, icons, categories_title, brands, more_brand):
+  def __init__(self, title: str, icons: List[Dict[str, str]], categories_title: List[str], brands: List['Brand'], more_brand: 'Brand'):
     self.title = title
     self.icons = icons
     self.categories_title = categories_title
     self.brands = brands
     self.more_brand = more_brand
 
-class MoreBrand:
-  def __init__(self, link, picUrl):
+class Brand:
+  def __init__(self, link: str, imgUrl: str):
     self.link = link
-    self.picUrl = picUrl
+    self.imgUrl = imgUrl
+
+class Zone:
+  def __init__(self, name: str, hot_words: List[Dict[str, str]], activity: 'Activity', 
+    part_list: List['Goods_info'], hot_sale: List['Goods'], hot_brands: List[Dict[str, str]]):
+    self.name = name
+    self.hot_words = hot_words
+    self.activity = activity
+    self.part_list = part_list
+    self.hot_sale = hot_sale
+    self.hot_brands = hot_brands
+
+class Activity:
+  def __init__(self, link: str, imgUrl: str, zone_list: List[Dict[str, str]]):
+    self.link = link
+    self.imgUrl = imgUrl
+    self.zone_list = zone_list
+
+class Goods:
+  def __init__(self, title: str, link: str, imgUrl: str, old_price: float, price: float):
+    self.title = title
+    self.link = link
+    self.imgUrl = imgUrl
+    self.old_price = old_price 
+    self.price = price
+
+class Goods_info:
+  def __init__(self, title: str, desc: str, link: str, imgUrl: str):
+    self.title = title
+    self.desc = desc
+    self.link = link
+    self.imgUrl = imgUrl
 
 class Kaola:
   def __init__(self):
     self.driver = None
     self.navList = []
     self.categories_dict = {}
+    self.all_zone = []
 
   def setup_driver(self):
     options = webdriver.ChromeOptions()
@@ -59,22 +92,22 @@ class Kaola:
       all_category = title_element.get_text()
 
       icon_elements = li.find_all('img', class_='icon')
-      icons = [{"src": icon['src'], "srcset": icon['srcset']} for icon in icon_elements]
+      icons = [{"src": icon['src'].replace('//','https://').split('?')[0]} for icon in icon_elements]
 
       big_category_contents = li.find('div', class_='m-ctgcard f-cb j-category_card')
-      brandList = big_category_contents.find_all('div', class_='m-brandbox')
+      brandList = big_category_contents.find_all('div', class_='brandlist')
       brands = []
       for brand in brandList:
         brandElements = brand.find_all('a')
         for brandElement in brandElements:
-          brandHref = brandElement['href']
-          picUrl = brandElement.find('img')['src']
-          brands.append({"href": brandHref, "picUrl": picUrl})
+          brand_link = brandElement['href'].replace('//','https://')
+          brand_imgUrl = brandElement.find('img')['src'].replace('//','https://')
+          brands.append(Brand(brand_link,brand_imgUrl))
 
       more_brand_element = big_category_contents.find('div', class_='imgbox')
-      more_brand_link = more_brand_element.find('a')['href']
-      more_brand_picUrl = more_brand_element.find('img')['src']
-      more_brand = MoreBrand(more_brand_link, more_brand_picUrl)
+      more_brand_link = more_brand_element.find('a')['href'].replace('//','https://')
+      more_brand_imgUrl = more_brand_element.find('img')['src'].replace('//','https://')
+      more_brand = Brand(more_brand_link, more_brand_imgUrl)
 
       litds = big_category_contents.select('.litd .item')
       litd_titles = [litd.find('p').find('a', class_=lambda x: x and x.startswith('cat2')).get_text() for litd in litds]
@@ -91,6 +124,61 @@ class Kaola:
       nav_item = NavItem(all_category, icons, litd_titles, brands, more_brand)
       self.navList.append(nav_item)
 
+  def parse_article(self):
+    articles = self.soup.find_all('article', class_='m-productfloor pc-index-module')
+    for article in articles:
+      article_title = article.find('span', class_='big').get_text()
+      hot_words = [
+        {
+          'title': li.find('a').get_text(),
+          'link': li.find('a')['href']
+        }
+        for li in article.find('ul', class_='w-taglist clearfix').find_all('li', class_='last')
+      ]
+      
+      main_part = article.find('div', class_='cont clearfix').contents[0]
+      main_link = main_part.find('a')['href']
+      main_imgUrl = main_part.find('img')['src']
+      mainpart_list = [
+        {
+          'text': li.find('span').get_text(),
+          'imgUrl': li.find('a')['href']
+        }
+        for li in main_part.find_all('ul')
+      ]
+      activity = Activity(main_link, main_imgUrl, mainpart_list)
+
+      content_part = article.find('div', class_='cont clearfix').find('div', class_='partm')
+      part_list = [
+        Goods_info(
+          li.next_element.find('h3').get_text(),
+          li.next_element.find('p').get_text(),
+          li.next_element['href'],
+          li.next_element.find('img')['src']
+        )
+        for li in content_part.find('ul').find_all('li')
+      ]
+
+      hot_sale = [
+        Goods(
+          itemsale.find('a', 'protitle').get_text(),
+          itemsale.find('a', 'protitle')['href'].replace('//', 'https://'),
+          itemsale.find('a')['href'].replace('//', 'https://'),
+          itemsale.find('p', 'curprice').find('strong').get_text(),
+          itemsale.find('p', 'curprice').find('del').get_text()
+        )
+        for itemsale in article.find_all('div', class_='itemgroup')
+      ]
+
+      hot_brands = [
+        {
+          'imgUrl': brand.find('img')['src'].replace('//', 'https://'),
+          'link': brand['href']
+        }
+        for brand in article.find('div', class_='brandListContainer').find_all('a')
+      ]
+      self.all_zone.append(Zone(article_title, hot_words, activity, part_list, hot_sale, hot_brands))
+
   def close_driver(self):
     if self.driver:
       self.driver.quit()
@@ -101,13 +189,40 @@ class Kaola:
       print("Icons:", nav_item.icons)
       print("Brands:")
       for brand in nav_item.brands:
-          print("pic:", brand["picUrl"], "href", brand["href"])
+        print("pic:", brand.imgUrl, "href", brand.link)
       print("More Brands:")
-      print("pic:", nav_item.more_brand.picUrl, "href", nav_item.more_brand.link)
+      print("pic:", nav_item.more_brand.imgUrl, "href", nav_item.more_brand.link)
       print("Subcategories:")
       for category in nav_item.categories_title:
           print(category, ":", self.categories_dict[nav_item.title][category])
       print("\n")
+
+  def print_article(self):
+    for zone in self.all_zone:
+      print("区域名称:", zone.name)
+      print("热词:")
+      for hot_word in zone.hot_words:
+        print("  标题:", hot_word['title'])
+        print("  链接:", hot_word['link'])
+      print("活动链接:", zone.activity.link)
+      print("活动图片地址:", zone.activity.imgUrl)
+      print("主要内容部分:")
+      for part in zone.part_list:
+        print("  商品标题:", part.title)
+        print("  商品描述:", part.desc)
+        print("  商品链接:", part.link)
+        print("  商品图片地址:", part.imgUrl)
+      print("热门商品:")
+      for goods in zone.hot_sale:
+        print("  商品标题:", goods.title)
+        print("  商品链接:", goods.link)
+        print("  商品图片地址:", goods.imgUrl)
+        print("  原价:", goods.old_price)
+        print("  现价:", goods.price)
+      print("热门品牌:")
+      for brand in zone.hot_brands:
+        print("  品牌图片地址:", brand['imgUrl'])
+        print("  品牌链接:", brand['link'])
 
 def main():
   kaola = Kaola()
@@ -116,8 +231,10 @@ def main():
   page_source = kaola.driver.page_source
   kaola.setup_bs(page_source)
   kaola.parse_nav()
+  kaola.parse_article()
   kaola.close_driver()
   kaola.print_nav()
+  kaola.print_article()
 
 if __name__ == "__main__":
   main()
