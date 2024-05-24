@@ -17,9 +17,11 @@ class NavItem:
     self.more_brand = more_brand
 
 class Brand:
-  def __init__(self, link: str, imgUrl: str):
+  def __init__(self, link: str, imgUrl: str, desc:str=None, count:int =None):
     self.link = link
     self.imgUrl = imgUrl
+    self.desc = desc
+    self.count = count
 
 class Zone:
   def __init__(self, name: str, hot_words: List[Dict[str, str]], activity: 'Activity', 
@@ -58,6 +60,8 @@ class Kaola:
     self.navList = []
     self.categories_dict = {}
     self.all_zone = []
+    self.hot_brands_banner = []
+    self.hot_brands_list = []
 
   def setup_driver(self):
     options = webdriver.ChromeOptions()
@@ -92,7 +96,7 @@ class Kaola:
       all_category = title_element.get_text()
 
       icon_elements = li.find_all('img', class_='icon')
-      icons = [{"src": icon['src'].replace('//','https://').split('?')[0]} for icon in icon_elements]
+      icons = [icon['src'].replace('//','https://').split('?')[0] for icon in icon_elements]
 
       big_category_contents = li.find('div', class_='m-ctgcard f-cb j-category_card')
       brandList = big_category_contents.find_all('div', class_='brandlist')
@@ -179,6 +183,28 @@ class Kaola:
       ]
       self.all_zone.append(Zone(article_title, hot_words, activity, part_list, hot_sale, hot_brands))
 
+  def parse_hot(self):
+    hot_section = self.soup.find('section', class_='cnt f-cb')
+    left = hot_section.find('div', class_='fixedBrandWrap not-support-filter')
+    left_ul = left.find('ul', class_='fixedBrand f-cb')
+    for li in left_ul.find_all('li'):
+      a = li.find('a')
+      link = a['href'].replace('//','https://')
+      imgUrl = a.find('img')['src'].split('?')[0]
+      text = li.find('div',class_='txt')
+      title = text.find_all('p')[0].get_text()
+      desc = text.find_all('p')[1].get_text()
+      self.hot_brands_banner.append(Goods_info(title, desc, link, imgUrl))
+    recommend = hot_section.find('ul', class_='recomBrand f-cb')
+    for li in recommend.find_all('li'):
+      info = li.find('div', class_='info')
+      imgUrl = info.find('img')['src'].split('?')[0]
+      desc = info.find('p').string
+      actions = li.find('div', class_='actions')
+      count = actions.find('p').string.replace('人关注该品牌','')
+      lilnk = actions.find('a')['href'].replace('//', 'https://')
+      self.hot_brands_list.append(Brand(link,imgUrl,desc,count))
+
   def close_driver(self):
     if self.driver:
       self.driver.quit()
@@ -194,7 +220,7 @@ class Kaola:
       print("pic:", nav_item.more_brand.imgUrl, "href", nav_item.more_brand.link)
       print("Subcategories:")
       for category in nav_item.categories_title:
-          print(category, ":", self.categories_dict[nav_item.title][category])
+        print(category, ":", self.categories_dict[nav_item.title][category])
       print("\n")
 
   def print_article(self):
@@ -223,6 +249,20 @@ class Kaola:
       for brand in zone.hot_brands:
         print("  品牌图片地址:", brand['imgUrl'])
         print("  品牌链接:", brand['link'])
+    
+  def print_hot_brands(self):
+    print("Hot Brands Banner:")
+    for goods_info in self.hot_brands_banner:
+      print("Title:", goods_info.title)
+      print("Description:", goods_info.desc)
+      print("Link:", goods_info.link)
+      print("Image URL:", goods_info.imgUrl)
+    print("Hot Brands List:")
+    for brand in self.hot_brands_list:
+      print("Description:", brand.desc)
+      print("Image URL:", brand.imgUrl)
+      print("Number of Followers:", brand.count)
+      print("Link:", brand.link)
 
 def main():
   kaola = Kaola()
@@ -232,9 +272,11 @@ def main():
   kaola.setup_bs(page_source)
   kaola.parse_nav()
   kaola.parse_article()
+  kaola.parse_hot()
   kaola.close_driver()
   kaola.print_nav()
   kaola.print_article()
+  kaola.print_hot_brands()
 
 if __name__ == "__main__":
   main()
