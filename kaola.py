@@ -40,12 +40,13 @@ class Activity:
     self.zone_list = zone_list
 
 class Goods:
-  def __init__(self, title: str, link: str, imgUrl: str, old_price: float, price: float):
+  def __init__(self, title: str, link: str, imgUrl: str, old_price: float, price: float, talkCount:int = None):
     self.title = title
     self.link = link
     self.imgUrl = imgUrl
     self.old_price = old_price 
     self.price = price
+    self.talkCount = talkCount
 
 class Goods_info:
   def __init__(self, title: str, desc: str, link: str, imgUrl: str):
@@ -62,6 +63,7 @@ class Kaola:
     self.all_zone = []
     self.hot_brands_banner = []
     self.hot_brands_list = []
+    self.guest_list = []
 
   def setup_driver(self):
     options = webdriver.ChromeOptions()
@@ -205,6 +207,20 @@ class Kaola:
       lilnk = actions.find('a')['href'].replace('//', 'https://')
       self.hot_brands_list.append(Brand(link,imgUrl,desc,count))
 
+  def parse_guest(self):
+    guest_like = self.soup.find('div', class_='m-reclst clearfix')
+    for content in guest_like.find_all('div'):
+      link = content.find('a', class_='itemImg')['href'].split('?')[0].replace('//', 'https://')
+      imgUrl = content.find('img')['src']
+      content_title = content.find('p', class_='itemTitle')
+      title = content_title.find('a').get_text()
+      info = content.find('div', class_='itemInfo clearfix')
+      price = info.find('p', class_='price').select_one('.price').get_text()
+      old_price = info.find('p', class_='price').select_one('.marprice del').get_text()
+      talkCount = info.find('a').get_text()
+      print((title,link,imgUrl,old_price,price,talkCount))
+      self.guest_list.append(Goods(title,link,imgUrl,old_price,price,talkCount))
+
   def close_driver(self):
     if self.driver:
       self.driver.quit()
@@ -264,6 +280,11 @@ class Kaola:
       print("Number of Followers:", brand.count)
       print("Link:", brand.link)
 
+  def print_guest(self):
+    print('guest:')
+    for guest in self.guest_list:
+      print(guest.title,guest.link,guest.imgUrl,guest.old_price,guest.price,guest.talkCount)
+
 def main():
   kaola = Kaola()
   kaola.setup_driver()
@@ -273,10 +294,12 @@ def main():
   kaola.parse_nav()
   kaola.parse_article()
   kaola.parse_hot()
+  kaola.print_guest()
   kaola.close_driver()
   kaola.print_nav()
   kaola.print_article()
   kaola.print_hot_brands()
+  kaola.print_guest()
 
 if __name__ == "__main__":
   main()
